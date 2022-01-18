@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <meta name="viewport"
+        content="width = device-width, initial-scale = 1.0, minimum-scale = 1, maximum-scale = 1, user-scalable = no, viewport-fit=cover,minimal-ui" />
+    <!--
+        <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+    -->
+    <script src="phaser.min.js"></script>
+    <script src="localforage.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <script>
+        var gameHeight = 720, gameWidth = 1280;
+        var currentScene;
+        var playerX = 0;
+        var player, ship, fishLine;
+        var cursors;
+        var txtScore, txtTime;
+        var remainTime, secondTimer, scoreValue;
+        var cntTimer = 0;
+        var bGame = false;
+        var hiScore = 0;
+        var txtHiScore;
+        var fishImage = ["fish1", "fish2", "fish3"];
+        var fishGroup;
+
+        function UIInit() {
+            txtScore = currentScene.add
+                .text(50, 20, "SCORE:0")
+                .setScrollFactor(0)
+                .setFontSize(30)
+                .setStroke("#ffffff", 2)
+                .setColor("#ffffff");
+
+            txtTime = currentScene.add
+                .text(250, 20, "TIME:30")
+                .setScrollFactor(0)
+                .setFontSize(30)
+                .setStroke("#ffffff", 2)
+                .setColor("#ffffff");
+
+            txtHiScore = currentScene.add
+                .text(400, 400, "")
+                .setScrollFactor(0)
+                .setFontSize(40)
+                .setStroke("#ffffff", 2)
+                .setColor("#ffff00");
+
+            currentScene.tweens.add({
+                targets: txtHiScore,
+                alpha: 0.5,
+                ease: 'Cubic.easeOut',
+                duration: 500,
+                repeat: -1,
+                yoyo: true
+            });
+
+        }
+
+
+
+        class fishedSprite extends Phaser.GameObjects.Sprite {
+            constructor(scene, x, y, fishId, flipBool) {
+                super(scene, x, y);
+                this.setTexture(fishImage[fishId]);
+                this.setPosition(x, y);
+                this.currentScale = 1.0;
+                this.currentAlpha = 1.0;
+                this.flipX = flipBool;
+            }
+            preUpdate(time, delta) {
+                super.preUpdate(time, delta);
+                this.setPosition(this.x, this.y - 25);
+                this.currentScale = this.currentScale + 0.2;
+                this.currentAlpha = this.currentAlpha - 0.05;
+                this.setScale(this.currentScale);
+                this.alpha = this.currentAlpha;
+                if(this.y < 10){
+                    this.destroy();
+                }
+            }
+        }
+
+        function moveNeedle(_y) {
+            player.y = player.y + _y;
+            if (player.y <= 200) {
+                player.y = 200;
+            }
+            else if (player.y >= 680) {
+                player.y = 680;
+            }
+            fishLine.setSize(10, player.y - ship.y);
+
+        }
+        function moveShip(_x) {
+            player.x = player.x + _x;
+            if (player.x >= 0 && player.x <= 1280) {
+                ship.x = ship.x + _x;
+            } else {
+                if (player.x < 0) {
+                    player.x = 0;
+                    ship.x = 100;
+                } else if (player.x > 1280) {
+                    player.x = 1280;
+                    ship.x = 1280 + 100;
+                }
+            }
+            fishLine.x = player.x;
+        }
+
+        function spwanFish(x, y, dir) {
+            var min = 0;
+            var max = 2 + 1;
+            var selectedImg = Math.floor(Math.random() * (max - min)) + min;
+            var fish = currentScene.physics.add.sprite(x, y, fishImage[selectedImg]);
+            fish.fishKind = selectedImg;
+            fishGroup.add(fish);
+
+            if (dir > 0) {
+                fish.flipX = true;
+            } else {
+                fish.flipX = false;
+            }
+            fish.setVelocityX(dir);
+        }
+        function hitFish(player, fishObj) {
+            currentScene.add.existing(new fishedSprite(currentScene, fishObj.x, fishObj.y, fishObj.fishKind, fishObj.flipX));
+            fishObj.destroy();
+            scoreValue = scoreValue + 1;
+            txtScore.text = "SCORE:" + scoreValue;
+
+        }
+
+        class titleScene extends Phaser.Scene {
+            constructor() {
+                super({ key: "titleScene", active: true });
+            }
+            create() {
+                currentScene = this;
+                let text = this.add
+                    .text(450, 100, "Fisher Game")
+                    .setFontSize(46)
+                    .setColor("#0");
+
+                var clickButton = this.add
+                    .text(400, 600, "START TO CLICK")
+                    .setStroke("#0000ff", 4)
+                    .setBackgroundColor("#ddbcff")
+                    .setFontSize("60px")
+                    .setColor("#0f0")
+                    .setInteractive();
+                clickButton.on(
+                    "pointerdown",
+                    () => {
+                        this.scene.start("gameScene");
+                    },
+                    this
+                );
+
+                var txtHS = this.add
+                    .text(400, 400, "")
+                    .setFontSize(46)
+                    .setColor("#0");
+
+                localforage.getItem("fisherGameScore", function (err, value) {
+                    if (value != null) {
+                        hiScore = value;
+                    } else {
+                        hiScore = 0;
+                    }
+                    txtHS.text = "HISCORE:" + hiScore;
+                });
+
+            }
+        }
+
+
+
+
+        class gameScene extends Phaser.Scene {
+            constructor() {
+                super({ key: "gameScene", active: false });
+            }
+            preload() {
+                this.load.image("bg001", "./bg.jpg");
+                this.load.image("ship", "./ship_200x80.png");
+                this.load.image("needle", "./needle_40x60.png");
+
+                this.load.image("fish1", "./fish1_100x50.png");
+                this.load.image("fish2", "./fish2_100x50.png");
+                this.load.image("fish3", "./fish3_100x50.png");
+
+            }
+            create() {
+                currentScene = this;
+                var bg = currentScene.add
+                    .tileSprite(0, 0, gameWidth, gameHeight, "bg001")
+                    .setOrigin(0)
+                    .setScrollFactor(0);
+
+                var playerX = gameWidth / 2;
+                player = currentScene.physics.add.sprite(playerX, 200, 'needle');
+                player.setBounce(0.1);
+                player.setScale(1.0);
+                player.setBodySize(40, 50);  //物理サイズを調整する
+                player.setOffset(0, 10);     //物理判定位置を調整する
+                ship = currentScene.add.sprite(playerX + 100, 200, "ship");
+                fishLine = currentScene.add.rectangle(playerX,200,10,player.y - ship.y,"#123456");
+
+                fishGroup = this.physics.add.group();
+                this.physics.add.overlap(player, fishGroup, hitFish);
+                cursors = currentScene.input.keyboard.createCursorKeys();
+                UIInit();
+
+
+
+                bGame = true;
+                secondTimer = 0;
+                remainTime = 60;
+                scoreValue = 0;
+            }
+
+            update() {
+                if (bGame == true) {
+                    secondTimer = (secondTimer + 1) % 60;
+                    if (secondTimer == 0) {
+                        remainTime = remainTime - 1;
+                        txtTime.text = "TIME:" + remainTime;
+                        if (remainTime == 0) {
+                            bGame = false;
+                            if (hiScore < scoreValue) {
+                                txtHiScore.text = "YOU GOT HISCORE!!";
+                                hiScore = scoreValue;
+                                localforage.setItem("fisherGameScore", hiScore);
+
+                                currentScene.tweens.add({
+                                    targets: txtScore,
+                                    alpha: 0.5,
+                                    ease: 'Cubic.easeOut',
+                                    duration: 500,
+                                    repeat: -1,
+                                    yoyo: true
+                                });
+                            }
+
+                        }
+                    }
+                    if (cntTimer == 0) {
+                        var min = 20;//msec
+                        var max = 101;//msec
+                        cntTimer = Math.floor(Math.random() * (max - min)) + min;
+                        min = 400;//Spwan Height Min
+                        max = 701;//Spwan Height Max
+                        var spawnY = Math.floor(Math.random() * (max - min)) + min;
+                        min = 0;
+                        max = 2;
+                        var flipDir = Math.floor(Math.random() * (max - min)) + min;
+                        if (flipDir == 0) {
+                            spwanFish(0, spawnY, 1000);
+                        } else {
+                            spwanFish(1270, spawnY, -1000);
+                        }
+                    } else {
+                        cntTimer = cntTimer - 1;
+                    }
+
+                    if (cursors.left.isDown) {
+                        moveShip(-15);
+                    } else if (cursors.right.isDown) {
+                        moveShip(15);
+                    }
+                    if (cursors.up.isDown) {
+                        moveNeedle(-10);
+                    } else if (cursors.down.isDown) {
+                        moveNeedle(6);
+                    }
+                }
+            }
+        }
+
+
+        var config = {
+            type: Phaser.AUTO,
+            width: gameWidth,
+            height: gameHeight,
+            backgroundColor: "#eaffff",
+            autoResize: true,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: true
+                }
+            }, scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [titleScene, gameScene]
+        };
+        var game = new Phaser.Game(config);
+    </script>
+</body>
+
+</html>
