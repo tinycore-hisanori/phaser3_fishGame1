@@ -12,6 +12,7 @@
     -->
     <script src="phaser.min.js"></script>
     <script src="localforage.js"></script>
+    <script src="howler.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -30,6 +31,26 @@
         var txtHiScore;
         var fishImage = ["fish1", "fish2", "fish3"];
         var fishGroup;
+        var fishLineWidth = 5;
+        var btnReturn;
+        var airRectangle, groundRectangle;
+
+        //ゲーム中の音楽
+        var bgm1 = new Howl({
+            src: ['bgm.mp3'],
+            loop: true
+        });
+        //魚がつれたときの効果音
+        var seFish = new Howl({
+            src: ['get.mp3'],
+        });
+
+        //魚がつれた
+        var seEnd = new Howl({
+            src: ['gameend.mp3'],
+        });
+
+
 
         function UIInit() {
             txtScore = currentScene.add
@@ -62,9 +83,51 @@
                 yoyo: true
             });
 
+            btnReturn = currentScene.add
+                .text(gameWidth / 2 - 100, 600, " BACK ")
+                .setScrollFactor(0)
+                .setFontSize(46)
+                .setColor("#ff0")
+                .setBackgroundColor("#aa5500")
+                .setInteractive();
+            btnReturn.on(
+                "pointerdown",
+                () => {
+                    currentScene.scene.start("titleScene");
+                },
+                currentScene);
+            btnReturn.visible = false;
+
+
         }
 
+        class fishSprite extends Phaser.Physics.Arcade.Sprite {
+            constructor(scene, x, y, dir) {
+                var max = 2 + 1;
+                super(scene, x, y);
+                var min = 0;
+                var selectedImg = Math.floor(Math.random() * (max - min)) + min;
+                this.setTexture(fishImage[selectedImg]);
+                this.setPosition(x, y);
+                scene.add.existing(this);
 
+                this.currentScale = 1.0;
+                this.currentAlpha = 1.0;
+                if (dir > 0) {
+                    this.flipX = true;
+                } else {
+                    this.flipX = false;
+                }
+                this.fishKind = selectedImg;
+                fishGroup.add(this);
+                this.setVelocityX(dir);
+                min = -300;
+                max = 301;
+                var tmpPowerY = Math.floor(Math.random() * (max - min)) + min;
+                this.setVelocityY(tmpPowerY);
+                this.setBounce(1.0, 1.0);//重要!
+            }
+        }
 
         class fishedSprite extends Phaser.GameObjects.Sprite {
             constructor(scene, x, y, fishId, flipBool) {
@@ -82,7 +145,7 @@
                 this.currentAlpha = this.currentAlpha - 0.05;
                 this.setScale(this.currentScale);
                 this.alpha = this.currentAlpha;
-                if(this.y < 10){
+                if (this.y < 10) {
                     this.destroy();
                 }
             }
@@ -96,8 +159,7 @@
             else if (player.y >= 680) {
                 player.y = 680;
             }
-            fishLine.setSize(10, player.y - ship.y);
-
+            fishLine.setSize(fishLineWidth, player.y - ship.y);
         }
         function moveShip(_x) {
             player.x = player.x + _x;
@@ -115,22 +177,8 @@
             fishLine.x = player.x;
         }
 
-        function spwanFish(x, y, dir) {
-            var min = 0;
-            var max = 2 + 1;
-            var selectedImg = Math.floor(Math.random() * (max - min)) + min;
-            var fish = currentScene.physics.add.sprite(x, y, fishImage[selectedImg]);
-            fish.fishKind = selectedImg;
-            fishGroup.add(fish);
-
-            if (dir > 0) {
-                fish.flipX = true;
-            } else {
-                fish.flipX = false;
-            }
-            fish.setVelocityX(dir);
-        }
         function hitFish(player, fishObj) {
+            seFish.play();
             currentScene.add.existing(new fishedSprite(currentScene, fishObj.x, fishObj.y, fishObj.fishKind, fishObj.flipX));
             fishObj.destroy();
             scoreValue = scoreValue + 1;
@@ -196,7 +244,6 @@
                 this.load.image("fish1", "./fish1_100x50.png");
                 this.load.image("fish2", "./fish2_100x50.png");
                 this.load.image("fish3", "./fish3_100x50.png");
-
             }
             create() {
                 currentScene = this;
@@ -204,7 +251,7 @@
                     .tileSprite(0, 0, gameWidth, gameHeight, "bg001")
                     .setOrigin(0)
                     .setScrollFactor(0);
-
+                cursors = currentScene.input.keyboard.createCursorKeys();
                 var playerX = gameWidth / 2;
                 player = currentScene.physics.add.sprite(playerX, 200, 'needle');
                 player.setBounce(0.1);
@@ -212,18 +259,39 @@
                 player.setBodySize(40, 50);  //物理サイズを調整する
                 player.setOffset(0, 10);     //物理判定位置を調整する
                 ship = currentScene.add.sprite(playerX + 100, 200, "ship");
-                fishLine = currentScene.add.rectangle(playerX,200,10,player.y - ship.y,"#123456");
+                fishLine = currentScene.add.rectangle(playerX, 200, fishLineWidth, player.y - ship.y, "0xAAAAAA");
+                
+                airRectangle = currentScene.add.rectangle(gameWidth / 2, 0, gameWidth, 400, "0x333333");
+                this.physics.add.existing(airRectangle);
+                airRectangle.body.setBounce(1.0, 1.0);
+                airRectangle.body.setMass(9999);
+                airRectangle.body.setImmovable(true);
+                airRectangle.setAlpha(0);
+
+                groundRectangle = currentScene.add.rectangle(gameWidth / 2, 800, gameWidth, 100, "0x333333");
+                this.physics.add.existing(groundRectangle);
+                groundRectangle.body.setBounce(1.0, 1.0);
+                groundRectangle.body.setMass(9999);
+                groundRectangle.body.setImmovable(true);
+//                groundRectangle.setAlpha(0);
+
 
                 fishGroup = this.physics.add.group();
+
+                this.physics.add.collider(airRectangle,fishGroup);
+                this.physics.add.collider(groundRectangle,fishGroup);
+                
                 this.physics.add.overlap(player, fishGroup, hitFish);
-                cursors = currentScene.input.keyboard.createCursorKeys();
                 UIInit();
 
 
+                if (bgm1 != null) {
+                    bgm1.play();
+                }
 
                 bGame = true;
                 secondTimer = 0;
-                remainTime = 60;
+                remainTime = 30;
                 scoreValue = 0;
             }
 
@@ -235,6 +303,9 @@
                         txtTime.text = "TIME:" + remainTime;
                         if (remainTime == 0) {
                             bGame = false;
+                            bgm1.stop();
+                            seEnd.play();
+                            btnReturn.visible = true;
                             if (hiScore < scoreValue) {
                                 txtHiScore.text = "YOU GOT HISCORE!!";
                                 hiScore = scoreValue;
@@ -248,6 +319,8 @@
                                     repeat: -1,
                                     yoyo: true
                                 });
+                            } else {
+                                txtHiScore.text = "GAME END!";
                             }
 
                         }
@@ -263,9 +336,9 @@
                         max = 2;
                         var flipDir = Math.floor(Math.random() * (max - min)) + min;
                         if (flipDir == 0) {
-                            spwanFish(0, spawnY, 1000);
+                            var sakana = new fishSprite(currentScene, 0, spawnY, 700);
                         } else {
-                            spwanFish(1270, spawnY, -1000);
+                            var sakana = new fishSprite(currentScene, 1270, spawnY, -700);
                         }
                     } else {
                         cntTimer = cntTimer - 1;
